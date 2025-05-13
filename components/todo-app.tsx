@@ -235,7 +235,9 @@ export default function TodoApp() {
   const todosByDate = todos.reduce(
     (acc, todo) => {
       if (todo.dueDate) {
-        const dateStr = todo.dueDate.toISOString().split("T")[0]
+        // Use UTC date string to avoid timezone issues
+        const date = new Date(todo.dueDate)
+        const dateStr = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
         if (!acc[dateStr]) {
           acc[dateStr] = []
         }
