@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { PlusCircle, Search, CalendarIcon, BarChart } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -12,36 +12,32 @@ import CalendarView from "@/components/calendar-view"
 import StatsView from "@/components/stats-view"
 import { ModeToggle } from "@/components/mode-toggle"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useSupabase } from "@/lib/hooks/useSupabase"
+import type { Database } from "@/lib/supabase"
 
 export type Priority = "low" | "medium" | "high"
 
-export type Category = {
-  id: string
-  name: string
-  color: string
+export type Category = Database['public']['Tables']['categories']['Row']
+export type Todo = Database['public']['Tables']['todos']['Row'] & {
+  subtasks: Database['public']['Tables']['subtasks']['Row'][]
 }
-
-export type Todo = {
-  id: string
-  text: string
-  completed: boolean
-  createdAt: Date
-  dueDate: Date | null
-  priority: Priority
-  categoryId: string | null
-  description: string
-  subTasks: SubTask[]
-}
-
-export type SubTask = {
-  id: string
-  text: string
-  completed: boolean
-}
+export type SubTask = Database['public']['Tables']['subtasks']['Row']
 
 export default function TodoApp() {
-  const [todos, setTodos] = useState<Todo[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
+  const {
+    loading,
+    todos,
+    categories,
+    addTodo: supabaseAddTodo,
+    updateTodo: supabaseUpdateTodo,
+    deleteTodo: supabaseDeleteTodo,
+    addCategory: supabaseAddCategory,
+    deleteCategory: supabaseDeleteCategory,
+    addSubtask: supabaseAddSubtask,
+    toggleSubtask: supabaseToggleSubtask,
+    deleteSubtask: supabaseDeleteSubtask,
+  } = useSupabase()
+
   const [activeTab, setActiveTab] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [isAddingTodo, setIsAddingTodo] = useState(false)
@@ -49,142 +45,98 @@ export default function TodoApp() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
 
-  // Load todos and categories from localStorage on initial render
-  useEffect(() => {
-    const savedTodos = localStorage.getItem("todos")
-    if (savedTodos) {
-      try {
-        const parsedTodos = JSON.parse(savedTodos)
-        // Convert string dates back to Date objects
-        const todosWithDates = parsedTodos.map((todo: any) => ({
-          ...todo,
-          createdAt: new Date(todo.createdAt),
-          dueDate: todo.dueDate ? new Date(todo.dueDate) : null,
-          subTasks: todo.subTasks || [],
-          description: todo.description || "",
-          priority: todo.priority || "medium",
-          categoryId: todo.categoryId || null,
-        }))
-        setTodos(todosWithDates)
-      } catch (error) {
-        console.error("Failed to parse todos from localStorage", error)
+  // Handle todo operations
+  const handleAddTodo = async (todoData: Partial<Todo>) => {
+    try {
+      // Format the todo data according to the database schema
+      const formattedTodoData = {
+        text: todoData.text || "",
+        description: todoData.description || null,
+        completed: false,
+        priority: (todoData.priority || "medium") as Priority,
+        due_date: todoData.due_date || null,
+        category_id: todoData.category_id || null,
       }
+
+      await supabaseAddTodo(formattedTodoData)
+      setIsAddingTodo(false)
+    } catch (error) {
+      console.error('Error adding todo:', error)
+      // You might want to show an error toast here
     }
+  }
 
-    const savedCategories = localStorage.getItem("categories")
-    if (savedCategories) {
-      try {
-        setCategories(JSON.parse(savedCategories))
-      } catch (error) {
-        console.error("Failed to parse categories from localStorage", error)
-      }
-    } else {
-      // Default categories
-      const defaultCategories = [
-        { id: "work", name: "Work", color: "#ef4444" },
-        { id: "personal", name: "Personal", color: "#3b82f6" },
-        { id: "shopping", name: "Shopping", color: "#10b981" },
-        { id: "health", name: "Health", color: "#8b5cf6" },
-      ]
-      setCategories(defaultCategories)
-      localStorage.setItem("categories", JSON.stringify(defaultCategories))
+  const handleToggleTodo = async (id: string) => {
+    const todo = todos.find(t => t.id === id)
+    if (!todo) return
+
+    try {
+      await supabaseUpdateTodo(id, { completed: !todo.completed })
+    } catch (error) {
+      console.error('Error toggling todo:', error)
     }
-  }, [])
+  }
 
-  // Save todos and categories to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem("todos", JSON.stringify(todos))
-  }, [todos])
-
-  useEffect(() => {
-    localStorage.setItem("categories", JSON.stringify(categories))
-  }, [categories])
-
-  const addTodo = (todoData: Partial<Todo>) => {
-    const newTodo: Todo = {
-      id: Date.now().toString(),
-      text: todoData.text || "",
-      completed: false,
-      createdAt: new Date(),
-      dueDate: todoData.dueDate || null,
-      priority: todoData.priority || "medium",
-      categoryId: todoData.categoryId || null,
-      description: todoData.description || "",
-      subTasks: todoData.subTasks || [],
+  const handleUpdateTodo = async (id: string, updatedData: Partial<Todo>) => {
+    try {
+      await supabaseUpdateTodo(id, updatedData)
+    } catch (error) {
+      console.error('Error updating todo:', error)
     }
-    setTodos([newTodo, ...todos])
-    setIsAddingTodo(false)
   }
 
-  const toggleTodo = (id: string) => {
-    setTodos(todos.map((todo) => (todo.id === id ? { ...todo, completed: !todo.completed } : todo)))
-  }
-
-  const updateTodo = (id: string, updatedData: Partial<Todo>) => {
-    setTodos(todos.map((todo) => (todo.id === id ? { ...todo, ...updatedData } : todo)))
-  }
-
-  const deleteTodo = (id: string) => {
-    setTodos(todos.filter((todo) => todo.id !== id))
-  }
-
-  const addCategory = (name: string, color: string) => {
-    const newCategory = {
-      id: Date.now().toString(),
-      name,
-      color,
+  const handleDeleteTodo = async (id: string) => {
+    try {
+      await supabaseDeleteTodo(id)
+    } catch (error) {
+      console.error('Error deleting todo:', error)
     }
-    setCategories([...categories, newCategory])
   }
 
-  const deleteCategory = (id: string) => {
-    setCategories(categories.filter((category) => category.id !== id))
-    // Remove category from todos
-    setTodos(todos.map((todo) => (todo.categoryId === id ? { ...todo, categoryId: null } : todo)))
+  const handleAddCategory = async (name: string, color: string) => {
+    try {
+      await supabaseAddCategory({ name, color })
+    } catch (error) {
+      console.error('Error adding category:', error)
+    }
   }
 
-  const toggleSubTask = (todoId: string, subTaskId: string) => {
-    setTodos(
-      todos.map((todo) => {
-        if (todo.id === todoId) {
-          const updatedSubTasks = todo.subTasks.map((subTask) =>
-            subTask.id === subTaskId ? { ...subTask, completed: !subTask.completed } : subTask,
-          )
-          return { ...todo, subTasks: updatedSubTasks }
-        }
-        return todo
-      }),
-    )
+  const handleDeleteCategory = async (id: string) => {
+    try {
+      await supabaseDeleteCategory(id)
+    } catch (error) {
+      console.error('Error deleting category:', error)
+    }
   }
 
-  const addSubTask = (todoId: string, text: string) => {
-    setTodos(
-      todos.map((todo) => {
-        if (todo.id === todoId) {
-          const newSubTask = {
-            id: Date.now().toString(),
-            text,
-            completed: false,
-          }
-          return { ...todo, subTasks: [...todo.subTasks, newSubTask] }
-        }
-        return todo
-      }),
-    )
+  const handleToggleSubTask = async (todoId: string, subTaskId: string) => {
+    const todo = todos.find(t => t.id === todoId)
+    if (!todo) return
+
+    const subtask = todo.subtasks.find(st => st.id === subTaskId)
+    if (!subtask) return
+
+    try {
+      await supabaseToggleSubtask(todoId, subTaskId, !subtask.completed)
+    } catch (error) {
+      console.error('Error toggling subtask:', error)
+    }
   }
 
-  const deleteSubTask = (todoId: string, subTaskId: string) => {
-    setTodos(
-      todos.map((todo) => {
-        if (todo.id === todoId) {
-          return {
-            ...todo,
-            subTasks: todo.subTasks.filter((subTask) => subTask.id !== subTaskId),
-          }
-        }
-        return todo
-      }),
-    )
+  const handleAddSubTask = async (todoId: string, text: string) => {
+    try {
+      await supabaseAddSubtask(todoId, text)
+    } catch (error) {
+      console.error('Error adding subtask:', error)
+    }
+  }
+
+  const handleDeleteSubTask = async (todoId: string, subTaskId: string) => {
+    try {
+      await supabaseDeleteSubtask(todoId, subTaskId)
+    } catch (error) {
+      console.error('Error deleting subtask:', error)
+    }
   }
 
   // Filter todos based on active tab, search query, and selected category
@@ -198,9 +150,9 @@ export default function TodoApp() {
 
     const matchesSearch =
       todo.text.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      todo.description.toLowerCase().includes(searchQuery.toLowerCase())
+      (todo.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
 
-    const matchesCategory = selectedCategory === null || todo.categoryId === selectedCategory
+    const matchesCategory = selectedCategory === null || todo.category_id === selectedCategory
 
     return matchesTab && matchesSearch && matchesCategory
   })
@@ -209,10 +161,12 @@ export default function TodoApp() {
   const sortedTodos = [...filteredTodos].sort((a, b) => {
     if (sortBy === "dueDate") {
       // Handle null due dates
-      if (!a.dueDate && !b.dueDate) return 0
-      if (!a.dueDate) return sortOrder === "asc" ? 1 : -1
-      if (!b.dueDate) return sortOrder === "asc" ? -1 : 1
-      return sortOrder === "asc" ? a.dueDate.getTime() - b.dueDate.getTime() : b.dueDate.getTime() - a.dueDate.getTime()
+      if (!a.due_date && !b.due_date) return 0
+      if (!a.due_date) return sortOrder === "asc" ? 1 : -1
+      if (!b.due_date) return sortOrder === "asc" ? -1 : 1
+      return sortOrder === "asc" 
+        ? new Date(a.due_date).getTime() - new Date(b.due_date).getTime() 
+        : new Date(b.due_date).getTime() - new Date(a.due_date).getTime()
     } else if (sortBy === "priority") {
       const priorityValues = { high: 3, medium: 2, low: 1 }
       const priorityA = priorityValues[a.priority]
@@ -221,22 +175,21 @@ export default function TodoApp() {
     } else {
       // Default sort by createdAt
       return sortOrder === "asc"
-        ? a.createdAt.getTime() - b.createdAt.getTime()
-        : b.createdAt.getTime() - a.createdAt.getTime()
+        ? new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        : new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     }
   })
 
   // Count todos by status
   const activeTodosCount = todos.filter((todo) => !todo.completed).length
   const completedTodosCount = todos.filter((todo) => todo.completed).length
-  const todosWithDueDateCount = todos.filter((todo) => todo.dueDate !== null).length
+  const todosWithDueDateCount = todos.filter((todo) => todo.due_date !== null).length
 
   // Group todos by date for calendar view
   const todosByDate = todos.reduce(
     (acc, todo) => {
-      if (todo.dueDate) {
-        // Use UTC date string to avoid timezone issues
-        const date = new Date(todo.dueDate)
+      if (todo.due_date) {
+        const date = new Date(todo.due_date)
         const dateStr = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
         if (!acc[dateStr]) {
           acc[dateStr] = []
@@ -248,12 +201,28 @@ export default function TodoApp() {
     {} as Record<string, Todo[]>,
   )
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto"></div>
+          <p className="mt-4 text-purple-200">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:space-x-4 sm:items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Todo Pro</h1>
+        <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
+          Todo Pro
+        </h1>
         <div className="flex items-center space-x-2">
-          <Button onClick={() => setIsAddingTodo(true)} className="w-full sm:w-auto">
+          <Button 
+            onClick={() => setIsAddingTodo(true)} 
+            className="w-full sm:w-auto bg-purple-600 hover:bg-purple-700 text-white"
+          >
             <PlusCircle className="mr-2 h-4 w-4" />
             Add Task
           </Button>
@@ -261,7 +230,13 @@ export default function TodoApp() {
         </div>
       </div>
 
-      {isAddingTodo && <TodoForm onSubmit={addTodo} onCancel={() => setIsAddingTodo(false)} categories={categories} />}
+      {isAddingTodo && (
+        <TodoForm 
+          onSubmit={handleAddTodo} 
+          onCancel={() => setIsAddingTodo(false)} 
+          categories={categories} 
+        />
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="relative col-span-1 md:col-span-2">
@@ -359,12 +334,12 @@ export default function TodoApp() {
                   key={todo.id}
                   todo={todo}
                   categories={categories}
-                  onToggle={toggleTodo}
-                  onUpdate={updateTodo}
-                  onDelete={deleteTodo}
-                  onToggleSubTask={toggleSubTask}
-                  onAddSubTask={addSubTask}
-                  onDeleteSubTask={deleteSubTask}
+                  onToggle={handleToggleTodo}
+                  onUpdate={handleUpdateTodo}
+                  onDelete={handleDeleteTodo}
+                  onToggleSubTask={handleToggleSubTask}
+                  onAddSubTask={handleAddSubTask}
+                  onDeleteSubTask={handleDeleteSubTask}
                 />
               ))}
             </div>
@@ -383,12 +358,12 @@ export default function TodoApp() {
                   key={todo.id}
                   todo={todo}
                   categories={categories}
-                  onToggle={toggleTodo}
-                  onUpdate={updateTodo}
-                  onDelete={deleteTodo}
-                  onToggleSubTask={toggleSubTask}
-                  onAddSubTask={addSubTask}
-                  onDeleteSubTask={deleteSubTask}
+                  onToggle={handleToggleTodo}
+                  onUpdate={handleUpdateTodo}
+                  onDelete={handleDeleteTodo}
+                  onToggleSubTask={handleToggleSubTask}
+                  onAddSubTask={handleAddSubTask}
+                  onDeleteSubTask={handleDeleteSubTask}
                 />
               ))}
             </div>
@@ -407,12 +382,12 @@ export default function TodoApp() {
                   key={todo.id}
                   todo={todo}
                   categories={categories}
-                  onToggle={toggleTodo}
-                  onUpdate={updateTodo}
-                  onDelete={deleteTodo}
-                  onToggleSubTask={toggleSubTask}
-                  onAddSubTask={addSubTask}
-                  onDeleteSubTask={deleteSubTask}
+                  onToggle={handleToggleTodo}
+                  onUpdate={handleUpdateTodo}
+                  onDelete={handleDeleteTodo}
+                  onToggleSubTask={handleToggleSubTask}
+                  onAddSubTask={handleAddSubTask}
+                  onDeleteSubTask={handleDeleteSubTask}
                 />
               ))}
             </div>
@@ -423,9 +398,9 @@ export default function TodoApp() {
           <CalendarView
             todos={todos}
             todosByDate={todosByDate}
-            onToggle={toggleTodo}
-            onUpdate={updateTodo}
-            onDelete={deleteTodo}
+            onToggle={handleToggleTodo}
+            onUpdate={handleUpdateTodo}
+            onDelete={handleDeleteTodo}
             categories={categories}
           />
         </TabsContent>

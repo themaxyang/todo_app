@@ -53,9 +53,9 @@ export default function TodoItem({
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(todo.text)
   const [editDescription, setEditDescription] = useState(todo.description)
-  const [editDueDate, setEditDueDate] = useState<Date | null>(todo.dueDate)
+  const [editDueDate, setEditDueDate] = useState<Date | null>(todo.due_date ? new Date(todo.due_date) : null)
   const [editPriority, setEditPriority] = useState<Priority>(todo.priority)
-  const [editCategoryId, setEditCategoryId] = useState<string | null>(todo.categoryId)
+  const [editCategoryId, setEditCategoryId] = useState<string | null>(todo.category_id)
   const [isExpanded, setIsExpanded] = useState(false)
   const [newSubTaskText, setNewSubTaskText] = useState("")
 
@@ -64,9 +64,9 @@ export default function TodoItem({
       onUpdate(todo.id, {
         text: editText,
         description: editDescription,
-        dueDate: editDueDate,
+        due_date: editDueDate?.toISOString() || null,
         priority: editPriority,
-        categoryId: editCategoryId,
+        category_id: editCategoryId,
       })
       setIsEditing(false)
     }
@@ -75,9 +75,9 @@ export default function TodoItem({
   const handleCancel = () => {
     setEditText(todo.text)
     setEditDescription(todo.description)
-    setEditDueDate(todo.dueDate)
+    setEditDueDate(todo.due_date ? new Date(todo.due_date) : null)
     setEditPriority(todo.priority)
-    setEditCategoryId(todo.categoryId)
+    setEditCategoryId(todo.category_id)
     setIsEditing(false)
   }
 
@@ -116,9 +116,9 @@ export default function TodoItem({
     return categories.find((cat) => cat.id === categoryId) || null
   }
 
-  const category = getCategory(todo.categoryId)
-  const completedSubTasks = todo.subTasks.filter((st) => st.completed).length
-  const totalSubTasks = todo.subTasks.length
+  const category = getCategory(todo.category_id)
+  const completedSubTasks = todo.subtasks.filter((st) => st.completed).length
+  const totalSubTasks = todo.subtasks.length
 
   return (
     <Card className={cn("transition-all duration-200", todo.completed && "opacity-75")}>
@@ -157,7 +157,10 @@ export default function TodoItem({
 
               <div>
                 <label className="text-sm font-medium mb-1 block">Category</label>
-                <Select value={editCategoryId || ""} onValueChange={(value) => setEditCategoryId(value || null)}>
+                <Select 
+                  value={editCategoryId === null ? "" : editCategoryId} 
+                  onValueChange={(value: string) => setEditCategoryId(value || null)}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
@@ -188,7 +191,7 @@ export default function TodoItem({
                     <Calendar
                       mode="single"
                       selected={editDueDate || undefined}
-                      onSelect={setEditDueDate}
+                      onSelect={(date: Date | undefined) => setEditDueDate(date || null)}
                       initialFocus
                     />
                     {editDueDate && (
@@ -249,16 +252,16 @@ export default function TodoItem({
                     )}
                   </div>
                   <div className="flex items-center text-xs text-muted-foreground space-x-2">
-                    <span>{formatDate(todo.createdAt)}</span>
-                    {todo.dueDate && (
+                    <span>{format(new Date(todo.created_at), "MMM d, h:mm a")}</span>
+                    {todo.due_date && (
                       <span
                         className={cn(
                           "flex items-center",
-                          new Date() > todo.dueDate && !todo.completed && "text-red-500",
+                          new Date() > new Date(todo.due_date) && !todo.completed && "text-red-500",
                         )}
                       >
                         <Clock className="h-3 w-3 mr-1" />
-                        Due: {format(todo.dueDate, "MMM d")}
+                        Due: {format(new Date(todo.due_date), "MMM d")}
                       </span>
                     )}
                     {totalSubTasks > 0 && (
@@ -313,9 +316,9 @@ export default function TodoItem({
                   </span>
                 </div>
 
-                {todo.subTasks.length > 0 && (
+                {todo.subtasks.length > 0 && (
                   <ul className="space-y-1">
-                    {todo.subTasks.map((subTask) => (
+                    {todo.subtasks.map((subTask) => (
                       <li key={subTask.id} className="flex items-center justify-between text-sm">
                         <div className="flex items-center space-x-2">
                           <Button
